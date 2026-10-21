@@ -29,12 +29,12 @@
     }
     .status-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 12px; border-radius: 999px;
-      font-size: 12px; font-weight: 700;
-      background: rgba(15,23,42,0.85); backdrop-filter: blur(8px);
+      padding: 6px 14px; border-radius: 999px;
+      font-size: 13px; font-weight: 700;
+      background: rgba(15,23,42,0.88); backdrop-filter: blur(8px);
       box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #eab308; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #eab308; }
     .dot.live { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
     .dot.err { background: #ef4444; }
     .bottombar {
@@ -45,14 +45,14 @@
       z-index: 10;
     }
     .btn-circle {
-      width: 56px; height: 56px; border-radius: 50%;
+      width: 58px; height: 58px; border-radius: 50%;
       background: rgba(255,255,255,0.18); backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.3);
-      color: #fff; font-size: 22px;
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff; font-size: 24px;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; transition: transform 0.15s, background 0.15s;
     }
-    .btn-circle:active { transform: scale(0.92); background: rgba(255,255,255,0.3); }
+    .btn-circle:active { transform: scale(0.92); background: rgba(255,255,255,0.35); }
     .overlay-msg {
       position: absolute; inset: 0; z-index: 20;
       background: rgba(9,13,22,0.92);
@@ -79,7 +79,7 @@
     </div>
     <div class="status-badge" id="badge">
       <div class="dot" id="dot"></div>
-      <span id="badge-text">Conectando...</span>
+      <span id="badge-text">Iniciando...</span>
     </div>
   </div>
 
@@ -110,6 +110,7 @@
     let currentStream = null;
     let peer = null;
     let activeCall = null;
+    let isCalling = false;
     let wakeLock = null;
 
     async function keepScreenAwake() {
@@ -118,7 +119,7 @@
           wakeLock = await navigator.wakeLock.request('screen');
         }
       } catch (e) {
-        console.warn('WakeLock no disponible', e);
+        console.warn('WakeLock', e);
       }
     }
 
@@ -127,15 +128,32 @@
         currentStream.getTracks().forEach(t => t.stop());
       }
       try {
-        currentStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: facing,
-            width: { ideal: 1080 },
-            height: { ideal: 1920 },
-            frameRate: { ideal: 30, min: 24 }
-          },
-          audio: true
-        });
+        // Request video (with fallback if audio permission fails or is busy)
+        let stream = null;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facing,
+              width: { ideal: 1080 },
+              height: { ideal: 1920 },
+              frameRate: { ideal: 30, min: 24 }
+            },
+            audio: true
+          });
+        } catch (mediaErr) {
+          console.warn('Audio falló, intentando solo video:', mediaErr);
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: facing,
+              width: { ideal: 1080 },
+              height: { ideal: 1920 },
+              frameRate: { ideal: 30, min: 24 }
+            },
+            audio: false
+          });
+        }
+
+        currentStream = stream;
         videoEl.srcObject = currentStream;
 
         const track = currentStream.getVideoTracks()[0];
@@ -150,8 +168,8 @@
           const senders = activeCall.peerConnection.getSenders();
           const videoSender = senders.find(s => s.track && s.track.kind === 'video');
           if (videoSender) videoSender.replaceTrack(track);
-        } else if (peer && roomId) {
-          callHost();
+        } else {
+          triggerCall();
         }
         await keepScreenAwake();
       } catch (err) {
@@ -174,41 +192,87 @@
       badgeText.textContent = 'Buscando EDITIVA...';
       dotEl.className = 'dot';
 
-      peer = new Peer();
+      peer = new Peer({
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' }
+          ]
+        }
+      });
 
       peer.on('open', () => {
-        console.log('Peer abierto con ID:', peer.id);
-        if (currentStream) callHost();
+        console.log('Peer listo con ID:', peer.id);
+        triggerCall();
+      });
+
+      peer.on('disconnected', () => {
+        console.log('Peer disconnected, reconnecting...');
+        if (!peer.destroyed) peer.reconnect();
       });
 
       peer.on('error', (err) => {
         console.warn('Peer error:', err);
-        dotEl.className = 'dot err';
-        badgeText.textContent = 'Reintentando...';
-        setTimeout(() => { if (!peer.destroyed) callHost(); }, 3000);
+        if (!activeCall) {
+          dotEl.className = 'dot err';
+          badgeText.textContent = 'Reintentando...';
+          setTimeout(triggerCall, 2500);
+        }
       });
     }
 
-    function callHost() {
-      if (!peer || !roomId || !currentStream) return;
-      console.log('Llamando a EDITIVA:', roomId);
+    function triggerCall() {
+      if (!peer || !peer.open || !roomId || !currentStream || isCalling) return;
+      if (activeCall && activeCall.open) return;
+
+      isCalling = true;
       badgeText.textContent = 'Conectando con PC...';
       dotEl.className = 'dot';
 
       try {
-        activeCall = peer.call(roomId, currentStream);
-        if (activeCall) {
-          activeCall.on('close', () => {
-            dotEl.className = 'dot err';
-            badgeText.textContent = 'Desconectado';
-            setTimeout(callHost, 3000);
-          });
-          dotEl.className = 'dot live';
-          badgeText.textContent = 'En vivo en EDITIVA (1080p)';
+        console.log('Llamando a EDITIVA:', roomId);
+        const call = peer.call(roomId, currentStream);
+        activeCall = call;
+
+        if (call.peerConnection) {
+          call.peerConnection.onconnectionstatechange = () => {
+            const state = call.peerConnection.connectionState;
+            console.log('Estado conexión WebRTC:', state);
+            if (state === 'connected') {
+              isCalling = false;
+              dotEl.className = 'dot live';
+              badgeText.textContent = 'En vivo en EDITIVA (1080p)';
+            } else if (state === 'disconnected' || state === 'failed') {
+              isCalling = false;
+              activeCall = null;
+              dotEl.className = 'dot err';
+              badgeText.textContent = 'Reconectando...';
+              setTimeout(triggerCall, 2000);
+            }
+          };
         }
+
+        call.on('close', () => {
+          console.log('Llamada cerrada');
+          isCalling = false;
+          activeCall = null;
+          dotEl.className = 'dot err';
+          badgeText.textContent = 'Reconectando...';
+          setTimeout(triggerCall, 2000);
+        });
+
+        call.on('error', (err) => {
+          console.warn('Error en llamada:', err);
+          isCalling = false;
+          activeCall = null;
+          setTimeout(triggerCall, 2500);
+        });
       } catch (err) {
-        console.error('Error al llamar:', err);
-        setTimeout(callHost, 3000);
+        console.error('Error al iniciar llamada:', err);
+        isCalling = false;
+        setTimeout(triggerCall, 3000);
       }
     }
 
@@ -239,6 +303,7 @@
       if (!document.hidden) {
         keepScreenAwake();
         if (!currentStream || !currentStream.active) startCamera(currentFacingMode);
+        if (!activeCall) triggerCall();
       }
     });
 
