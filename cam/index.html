@@ -16,8 +16,8 @@
     #preview {
       position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; background: #000;
-      transform: scaleX(-1); /* Default selfie mirror */
-      transition: transform 0.2s ease;
+      transform: scaleX(-1); /* Frontal espejo por defecto */
+      z-index: 1;
     }
 
     .topbar {
@@ -42,15 +42,6 @@
     .dot.live { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
     .dot.err { background: #ef4444; }
 
-    .stats-card {
-      position: absolute; top: 72px; left: 16px; right: 16px;
-      padding: 10px 14px; border-radius: 12px;
-      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.15);
-      font-size: 12px; z-index: 10;
-      display: flex; justify-content: space-between; align-items: center;
-    }
-
     .bottombar {
       position: absolute; bottom: 0; left: 0; right: 0;
       padding: 16px 16px env(safe-area-inset-bottom, 24px);
@@ -60,37 +51,35 @@
     }
     .btn-action {
       display: flex; align-items: center; justify-content: center; gap: 8px;
-      padding: 14px 24px; border-radius: 999px;
-      background: rgba(255,255,255,0.2); backdrop-filter: blur(12px);
-      border: 1px solid rgba(255,255,255,0.35);
-      color: #fff; font-size: 14px; font-weight: 700;
-      cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.4);
-    }
-    .btn-action.primary {
+      padding: 14px 28px; border-radius: 999px;
       background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      border-color: #a5b4fc;
+      border: 1px solid #a5b4fc;
+      color: #fff; font-size: 15px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.5);
     }
     .btn-action:active { transform: scale(0.95); }
 
+    /* PANTALLA DE INICIO CLARA */
     .overlay-msg {
       position: absolute; inset: 0; z-index: 20;
-      background: rgba(9,13,22,0.97);
+      background: #090d16;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       text-align: center; padding: 24px;
     }
-    .overlay-msg h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; color: #fff; }
-    .overlay-msg p { font-size: 14px; opacity: 0.85; max-width: 320px; line-height: 1.5; margin-bottom: 22px; color: #cbd5e1; }
+    .overlay-msg h2 { font-size: 24px; font-weight: 800; margin-bottom: 10px; color: #fff; }
+    .overlay-msg p { font-size: 15px; opacity: 0.85; max-width: 320px; line-height: 1.5; margin-bottom: 28px; color: #cbd5e1; }
     .btn-start {
-      padding: 14px 32px; border-radius: 12px;
+      padding: 16px 36px; border-radius: 14px;
       background: linear-gradient(135deg, #4f46e5, #7c3aed);
-      color: #fff; font-size: 15px; font-weight: 700;
-      border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,70,229,0.4);
+      color: #fff; font-size: 16px; font-weight: 700;
+      border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(79,70,229,0.5);
     }
+    .btn-start:active { transform: scale(0.96); }
   </style>
 </head>
 <body>
-  <video id="preview" autoplay muted playsinline></video>
+  <video id="preview" autoplay muted playsinline webkit-playsinline></video>
 
   <div class="topbar">
     <div class="brand">
@@ -102,22 +91,17 @@
     </div>
   </div>
 
-  <div class="stats-card">
-    <div>Cámara: <strong id="stat-cam-name" style="color:#38bdf8;">Frontal (Selfie)</strong></div>
-    <div style="color:#22c55e; font-weight:700;">📱 DIRECTA 1080p</div>
-  </div>
-
   <div class="bottombar">
-    <button class="btn-action primary" id="btn-switch-cam">
+    <button class="btn-action" id="btn-switch-cam">
       <span id="cam-icon" style="font-size:18px;">📷</span>
       <span id="cam-label">Cambiar a Trasera</span>
     </button>
   </div>
 
-  <div class="overlay-msg" id="overlay" style="display:none;">
-    <h2 id="overlay-title">Conectar cámara a EDITIVA</h2>
-    <p id="overlay-desc">Tocá el botón para iniciar la transmisión directa a tu computadora.</p>
-    <button class="btn-start" id="btn-start">Iniciar Cámara</button>
+  <div class="overlay-msg" id="overlay">
+    <h2>EDITIVA Cámara</h2>
+    <p>Tocá el botón abajo para activar la cámara en vivo y conectar con tu computadora.</p>
+    <button class="btn-start" id="btn-start">▶ Iniciar Cámara</button>
   </div>
 
   <script>
@@ -125,50 +109,39 @@
     const roomId = urlParams.get('room');
 
     const videoEl = document.getElementById('preview');
+    videoEl.muted = true;
+    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute('webkit-playsinline', '');
+
     const badgeText = document.getElementById('badge-text');
     const dotEl = document.getElementById('dot');
-    const statCamName = document.getElementById('stat-cam-name');
     const btnSwitchCam = document.getElementById('btn-switch-cam');
     const camIcon = document.getElementById('cam-icon');
     const camLabel = document.getElementById('cam-label');
     const overlay = document.getElementById('overlay');
     const btnStart = document.getElementById('btn-start');
 
-    let currentFacing = 'user'; // 'user' (frontal) | 'environment' (trasera)
+    let currentFacing = 'user'; // 'user' (selfie) | 'environment' (trasera)
     let currentStream = null;
     let peer = null;
     let activeCall = null;
     let isCalling = false;
 
-    // Keep screen awake without heavy APIs
     function keepAwake() {
-      if ('wakeLock' in navigator) {
-        navigator.wakeLock.request('screen').catch(() => {});
-      }
+      try {
+        if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+      } catch {}
     }
 
     async function getCameraStream(facing) {
-      const candidates = [
-        {
-          video: {
-            facingMode: facing,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30, min: 24 }
-          },
-          audio: false
-        },
-        {
-          video: { facingMode: facing },
-          audio: false
-        },
-        {
-          video: true,
-          audio: false
-        }
+      // Robust constraints that never fail on Samsung/Android
+      const tries = [
+        { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: facing }, audio: false },
+        { video: true, audio: false }
       ];
 
-      for (const c of candidates) {
+      for (const c of tries) {
         try {
           const s = await navigator.mediaDevices.getUserMedia(c);
           if (s) return s;
@@ -179,30 +152,37 @@
       return null;
     }
 
-    async function startCamera() {
+    async function activateCamera(facing) {
       if (currentStream) {
         currentStream.getTracks().forEach(t => t.stop());
         currentStream = null;
       }
 
-      const stream = await getCameraStream(currentFacing);
+      const stream = await getCameraStream(facing);
       if (!stream) {
-        overlay.style.display = 'flex';
-        return;
+        alert('No se pudo acceder a la cámara. Por favor asegurate de dar permisos en el navegador.');
+        return false;
       }
 
       currentStream = stream;
+      currentFacing = facing;
       videoEl.srcObject = stream;
 
+      // EXPLICIT PLAY - Crucial for Android Chrome to avoid black screen!
+      try {
+        await videoEl.play();
+      } catch (err) {
+        console.warn('video.play() warning:', err);
+      }
+
       const isFront = currentFacing === 'user';
-      videoEl.style.transform = isFront ? 'scaleX(-1)' : 'none';
+      videoEl.style.transform = isFront ? 'scaleX(-1)' : 'scaleX(1)';
       camIcon.textContent = isFront ? '📷' : '🤳';
       camLabel.textContent = isFront ? 'Cambiar a Trasera' : 'Cambiar a Frontal';
-      statCamName.textContent = isFront ? 'Frontal (Selfie)' : 'Trasera (Principal)';
 
       keepAwake();
 
-      // If already connected, replace track directly without disconnecting
+      // If active WebRTC call, replace track seamlessly
       if (activeCall && activeCall.peerConnection) {
         const newTrack = stream.getVideoTracks()[0];
         const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
@@ -212,14 +192,14 @@
       } else {
         triggerCall();
       }
+
+      return true;
     }
 
     function initPeer() {
       if (!roomId) {
-        overlay.style.display = 'flex';
-        document.getElementById('overlay-title').textContent = 'Falta código de sala';
-        document.getElementById('overlay-desc').textContent = 'Escaneá el código QR directamente desde EDITIVA en tu computadora.';
-        btnStart.style.display = 'none';
+        badgeText.textContent = 'Falta código QR';
+        dotEl.className = 'dot err';
         return;
       }
 
@@ -232,16 +212,13 @@
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' }
-          ],
-          sdpSemantics: 'unified-plan',
+          ]
         }
       });
 
       peer.on('open', () => {
-        console.log('Peer listo:', peer.id);
+        console.log('Peer en línea:', peer.id);
         triggerCall();
       });
 
@@ -266,17 +243,17 @@
       }
 
       isCalling = true;
-      badgeText.textContent = 'Conectando...';
+      badgeText.textContent = 'Llamando a EDITIVA...';
       dotEl.className = 'dot';
 
       try {
-        // Send hardware camera stream DIRECTLY with zero CPU/GPU overhead
         const call = peer.call(roomId, currentStream);
         activeCall = call;
 
         const pc = call.peerConnection;
         if (pc) {
           pc.addEventListener('connectionstatechange', () => {
+            console.log('WebRTC state:', pc.connectionState);
             if (pc.connectionState === 'connected') {
               dotEl.className = 'dot live';
               badgeText.textContent = 'En vivo en EDITIVA';
@@ -310,26 +287,33 @@
 
     btnSwitchCam.addEventListener('click', async () => {
       btnSwitchCam.style.opacity = '0.5';
-      currentFacing = currentFacing === 'user' ? 'environment' : 'user';
-      await startCamera();
+      const nextFacing = currentFacing === 'user' ? 'environment' : 'user';
+      await activateCamera(nextFacing);
       btnSwitchCam.style.opacity = '1';
     });
 
-    btnStart.addEventListener('click', () => {
+    btnStart.addEventListener('click', async () => {
       overlay.style.display = 'none';
-      startCamera();
+      const ok = await activateCamera('user');
+      if (ok) initPeer();
     });
 
     // Auto recover on tab focus
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         keepAwake();
-        if (!currentStream || !currentStream.active) startCamera();
+        if (currentStream && !currentStream.active) activateCamera(currentFacing);
         if (!activeCall || !activeCall.open) triggerCall();
       }
     });
 
-    startCamera().then(initPeer);
+    // Try starting camera right away; if blocked by browser gesture policy, overlay is visible!
+    activateCamera('user').then(ok => {
+      if (ok) {
+        overlay.style.display = 'none';
+        initPeer();
+      }
+    });
   </script>
 </body>
 </html>
