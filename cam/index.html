@@ -16,7 +16,7 @@
     #preview {
       position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; background: #000;
-      transform: scaleX(-1); /* Frontal espejo por defecto */
+      transform: scaleX(1); /* Trasera normal sin espejo */
       z-index: 1;
     }
 
@@ -59,7 +59,6 @@
     }
     .btn-action:active { transform: scale(0.95); }
 
-    /* PANTALLA DE INICIO CLARA */
     .overlay-msg {
       position: absolute; inset: 0; z-index: 20;
       background: #090d16;
@@ -93,15 +92,15 @@
 
   <div class="bottombar">
     <button class="btn-action" id="btn-switch-cam">
-      <span id="cam-icon" style="font-size:18px;">📷</span>
-      <span id="cam-label">Cambiar a Trasera</span>
+      <span id="cam-icon" style="font-size:18px;">🤳</span>
+      <span id="cam-label">Cambiar a Frontal</span>
     </button>
   </div>
 
   <div class="overlay-msg" id="overlay">
     <h2>EDITIVA Cámara</h2>
-    <p>Tocá el botón abajo para activar la cámara en vivo y conectar con tu computadora.</p>
-    <button class="btn-start" id="btn-start">▶ Iniciar Cámara</button>
+    <p>Tocá el botón abajo para activar la cámara trasera en alta definición.</p>
+    <button class="btn-start" id="btn-start">▶ Iniciar Cámara Trasera</button>
   </div>
 
   <script>
@@ -121,7 +120,8 @@
     const overlay = document.getElementById('overlay');
     const btnStart = document.getElementById('btn-start');
 
-    let currentFacing = 'user'; // 'user' (selfie) | 'environment' (trasera)
+    // DEFAULT TO REAR CAMERA (Highest optical quality & resolution on Samsung)
+    let currentFacing = 'environment';
     let currentStream = null;
     let peer = null;
     let activeCall = null;
@@ -134,11 +134,33 @@
     }
 
     async function getCameraStream(facing) {
-      // Robust constraints that never fail on Samsung/Android
+      // Prioritize highest resolution sensor
       const tries = [
-        { video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        { video: { facingMode: facing }, audio: false },
-        { video: true, audio: false }
+        {
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        },
+        {
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        },
+        {
+          video: { facingMode: facing },
+          audio: false
+        },
+        {
+          video: true,
+          audio: false
+        }
       ];
 
       for (const c of tries) {
@@ -146,7 +168,7 @@
           const s = await navigator.mediaDevices.getUserMedia(c);
           if (s) return s;
         } catch (e) {
-          console.warn('Candidate failed:', e);
+          console.warn('Constraint try failed:', e);
         }
       }
       return null;
@@ -168,7 +190,6 @@
       currentFacing = facing;
       videoEl.srcObject = stream;
 
-      // EXPLICIT PLAY - Crucial for Android Chrome to avoid black screen!
       try {
         await videoEl.play();
       } catch (err) {
@@ -294,7 +315,7 @@
 
     btnStart.addEventListener('click', async () => {
       overlay.style.display = 'none';
-      const ok = await activateCamera('user');
+      const ok = await activateCamera('environment');
       if (ok) initPeer();
     });
 
@@ -307,8 +328,8 @@
       }
     });
 
-    // Try starting camera right away; if blocked by browser gesture policy, overlay is visible!
-    activateCamera('user').then(ok => {
+    // Start with rear camera
+    activateCamera('environment').then(ok => {
       if (ok) {
         overlay.style.display = 'none';
         initPeer();
