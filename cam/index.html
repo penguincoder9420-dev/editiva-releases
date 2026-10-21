@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#090d16">
-  <title>EDITIVA Cámara</title>
+  <title>EDITIVA Cámara 60 FPS</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -16,7 +16,7 @@
     #preview {
       position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; background: #000;
-      transform: scaleX(1); /* Trasera normal sin espejo */
+      transform: scaleX(1); /* Trasera sin espejo */
       z-index: 1;
     }
 
@@ -99,7 +99,7 @@
 
   <div class="overlay-msg" id="overlay">
     <h2>EDITIVA Cámara</h2>
-    <p>Tocá el botón abajo para activar la cámara trasera en alta definición.</p>
+    <p>Tocá el botón abajo para activar la cámara trasera en hasta 60 FPS.</p>
     <button class="btn-start" id="btn-start">▶ Iniciar Cámara Trasera</button>
   </div>
 
@@ -120,7 +120,7 @@
     const overlay = document.getElementById('overlay');
     const btnStart = document.getElementById('btn-start');
 
-    // DEFAULT TO REAR CAMERA (Highest optical quality & resolution on Samsung)
+    // Default to rear camera with up to 60 FPS
     let currentFacing = 'environment';
     let currentStream = null;
     let peer = null;
@@ -134,14 +134,23 @@
     }
 
     async function getCameraStream(facing) {
-      // Prioritize highest resolution sensor
-      const tries = [
+      // Prioritize 60 FPS on Samsung Camera2 sensor
+      const candidates = [
         {
           video: {
             facingMode: { ideal: facing },
             width: { ideal: 1920, min: 1280 },
             height: { ideal: 1080, min: 720 },
-            frameRate: { ideal: 30, min: 24 }
+            frameRate: { ideal: 60, min: 30 }
+          },
+          audio: false
+        },
+        {
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 60 }
           },
           audio: false
         },
@@ -149,12 +158,13 @@
           video: {
             facingMode: { ideal: facing },
             width: { ideal: 1280 },
-            height: { ideal: 720 }
+            height: { ideal: 720 },
+            frameRate: { ideal: 60 }
           },
           audio: false
         },
         {
-          video: { facingMode: facing },
+          video: { facingMode: facing, frameRate: { ideal: 60 } },
           audio: false
         },
         {
@@ -163,15 +173,34 @@
         }
       ];
 
-      for (const c of tries) {
+      for (const c of candidates) {
         try {
           const s = await navigator.mediaDevices.getUserMedia(c);
           if (s) return s;
         } catch (e) {
-          console.warn('Constraint try failed:', e);
+          console.warn('Candidate failed:', e);
         }
       }
       return null;
+    }
+
+    async function apply60FpsEncodings(call) {
+      if (!call || !call.peerConnection) return;
+      try {
+        const senders = call.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          const params = videoSender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+          params.encodings[0].maxBitrate = 12000000;      // 12 Mbps for crystal clarity
+          params.encodings[0].maxFramerate = 60;          // Allow full 60 FPS
+          params.encodings[0].degradationPreference = 'maintain-framerate';
+          await videoSender.setParameters(params);
+          console.log('[EDITIVA] Encodings configurados: 60 FPS max, 12 Mbps');
+        }
+      } catch (err) {
+        console.warn('Error setting 60fps encodings:', err);
+      }
     }
 
     async function activateCamera(facing) {
@@ -203,12 +232,12 @@
 
       keepAwake();
 
-      // If active WebRTC call, replace track seamlessly
       if (activeCall && activeCall.peerConnection) {
         const newTrack = stream.getVideoTracks()[0];
         const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
         if (sender && newTrack) {
-          sender.replaceTrack(newTrack).catch(console.error);
+          await sender.replaceTrack(newTrack).catch(console.error);
+          apply60FpsEncodings(activeCall);
         }
       } else {
         triggerCall();
@@ -277,8 +306,9 @@
             console.log('WebRTC state:', pc.connectionState);
             if (pc.connectionState === 'connected') {
               dotEl.className = 'dot live';
-              badgeText.textContent = 'En vivo en EDITIVA';
+              badgeText.textContent = 'En vivo en EDITIVA (60 FPS)';
               isCalling = false;
+              apply60FpsEncodings(call);
             } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
               dotEl.className = 'dot err';
               badgeText.textContent = 'Reconectando...';
