@@ -119,7 +119,7 @@
           wakeLock = await navigator.wakeLock.request('screen');
         }
       } catch (e) {
-        console.warn('WakeLock', e);
+        console.warn('WakeLock:', e);
       }
     }
 
@@ -128,30 +128,15 @@
         currentStream.getTracks().forEach(t => t.stop());
       }
       try {
-        // Request video (with fallback if audio permission fails or is busy)
-        let stream = null;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: facing,
-              width: { ideal: 1080 },
-              height: { ideal: 1920 },
-              frameRate: { ideal: 30, min: 24 }
-            },
-            audio: true
-          });
-        } catch (mediaErr) {
-          console.warn('Audio falló, intentando solo video:', mediaErr);
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: facing,
-              width: { ideal: 1080 },
-              height: { ideal: 1920 },
-              frameRate: { ideal: 30, min: 24 }
-            },
-            audio: false
-          });
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1080, min: 720 },
+            height: { ideal: 1920, min: 1280 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        });
 
         currentStream = stream;
         videoEl.srcObject = currentStream;
@@ -167,7 +152,9 @@
         if (activeCall && activeCall.peerConnection) {
           const senders = activeCall.peerConnection.getSenders();
           const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-          if (videoSender) videoSender.replaceTrack(track);
+          if (videoSender) {
+            videoSender.replaceTrack(track);
+          }
         } else {
           triggerCall();
         }
@@ -198,8 +185,11 @@
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
             { urls: 'stun:stun.cloudflare.com:3478' }
-          ]
+          ],
+          sdpSemantics: 'unified-plan',
         }
       });
 
@@ -225,7 +215,9 @@
 
     function triggerCall() {
       if (!peer || !peer.open || !roomId || !currentStream || isCalling) return;
-      if (activeCall && activeCall.open) return;
+      if (activeCall && (activeCall.open || (activeCall.peerConnection && activeCall.peerConnection.iceConnectionState === 'connected'))) {
+        return;
+      }
 
       isCalling = true;
       badgeText.textContent = 'Conectando con PC...';
@@ -236,16 +228,17 @@
         const call = peer.call(roomId, currentStream);
         activeCall = call;
 
-        if (call.peerConnection) {
-          call.peerConnection.onconnectionstatechange = () => {
-            const state = call.peerConnection.connectionState;
-            console.log('Estado conexión WebRTC:', state);
-            if (state === 'connected') {
+        const pc = call.peerConnection;
+        if (pc) {
+          pc.oniceconnectionstatechange = () => {
+            console.log('ICE state:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
               isCalling = false;
               dotEl.className = 'dot live';
               badgeText.textContent = 'En vivo en EDITIVA (1080p)';
-            } else if (state === 'disconnected' || state === 'failed') {
+            } else if (pc.iceConnectionState === 'failed') {
               isCalling = false;
+              try { call.close(); } catch (_) {}
               activeCall = null;
               dotEl.className = 'dot err';
               badgeText.textContent = 'Reconectando...';
@@ -276,9 +269,36 @@
       }
     }
 
-    btnFlip.addEventListener('click', () => {
+    btnFlip.addEventListener('click', async () => {
       currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-      startCamera(currentFacingMode);
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: currentFacingMode },
+            width: { ideal: 1080, min: 720 },
+            height: { ideal: 1920, min: 1280 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        });
+        currentStream = stream;
+        videoEl.srcObject = stream;
+        const track = stream.getVideoTracks()[0];
+        if (activeCall && activeCall.peerConnection) {
+          const senders = activeCall.peerConnection.getSenders();
+          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+          if (videoSender) {
+            await videoSender.replaceTrack(track);
+          }
+        } else {
+          triggerCall();
+        }
+      } catch (e) {
+        console.error('Error flipping camera:', e);
+      }
     });
 
     let torchOn = false;
