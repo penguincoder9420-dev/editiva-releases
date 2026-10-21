@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>EDITIVA Cámara Móvil</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, html {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #090d16; color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #preview {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; background: #000;
+    }
+    .topbar {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 18px 16px;
+      background: linear-gradient(to bottom, rgba(9,13,22,0.85), transparent);
+      display: flex; justify-content: space-between; align-items: center;
+      z-index: 10;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 8px;
+      font-weight: 800; font-size: 15px; letter-spacing: 0.5px;
+    }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 12px; border-radius: 999px;
+      font-size: 12px; font-weight: 700;
+      background: rgba(15,23,42,0.85); backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #eab308; }
+    .dot.live { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
+    .dot.err { background: #ef4444; }
+    .bottombar {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 24px 20px;
+      background: linear-gradient(to top, rgba(9,13,22,0.9), transparent);
+      display: flex; justify-content: space-around; align-items: center;
+      z-index: 10;
+    }
+    .btn-circle {
+      width: 56px; height: 56px; border-radius: 50%;
+      background: rgba(255,255,255,0.18); backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff; font-size: 22px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.15s, background 0.15s;
+    }
+    .btn-circle:active { transform: scale(0.92); background: rgba(255,255,255,0.3); }
+    .overlay-msg {
+      position: absolute; inset: 0; z-index: 20;
+      background: rgba(9,13,22,0.92);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 24px;
+    }
+    .overlay-msg h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .overlay-msg p { font-size: 14px; opacity: 0.8; max-width: 320px; line-height: 1.5; margin-bottom: 20px; }
+    .btn-start {
+      padding: 14px 28px; border-radius: 12px;
+      background: linear-gradient(135deg, #4f46e5, #7c3aed);
+      color: #fff; font-size: 15px; font-weight: 700;
+      border: none; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <video id="preview" autoplay muted playsinline></video>
+
+  <div class="topbar">
+    <div class="brand">
+      <span>🟣 EDITIVA</span>
+    </div>
+    <div class="status-badge" id="badge">
+      <div class="dot" id="dot"></div>
+      <span id="badge-text">Conectando...</span>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <button class="btn-circle" id="btn-flip" title="Cambiar cámara">🔄</button>
+    <button class="btn-circle" id="btn-torch" title="Linterna" style="display:none;">💡</button>
+  </div>
+
+  <div class="overlay-msg" id="overlay" style="display:none;">
+    <h2 id="overlay-title">Conectar cámara a EDITIVA</h2>
+    <p id="overlay-desc">Tocá el botón para permitir el uso de la cámara de tu celular.</p>
+    <button class="btn-start" id="btn-start">Iniciar Cámara</button>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room');
+
+    const videoEl = document.getElementById('preview');
+    const badgeText = document.getElementById('badge-text');
+    const dotEl = document.getElementById('dot');
+    const btnFlip = document.getElementById('btn-flip');
+    const btnTorch = document.getElementById('btn-torch');
+    const overlay = document.getElementById('overlay');
+    const btnStart = document.getElementById('btn-start');
+
+    let currentFacingMode = 'environment';
+    let currentStream = null;
+    let peer = null;
+    let activeCall = null;
+    let wakeLock = null;
+
+    async function keepScreenAwake() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) {
+        console.warn('WakeLock no disponible', e);
+      }
+    }
+
+    async function startCamera(facing) {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+      }
+      try {
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing,
+            width: { ideal: 1080 },
+            height: { ideal: 1920 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: true
+        });
+        videoEl.srcObject = currentStream;
+
+        const track = currentStream.getVideoTracks()[0];
+        const caps = track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.torch) {
+          btnTorch.style.display = 'flex';
+        } else {
+          btnTorch.style.display = 'none';
+        }
+
+        if (activeCall && activeCall.peerConnection) {
+          const senders = activeCall.peerConnection.getSenders();
+          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+          if (videoSender) videoSender.replaceTrack(track);
+        } else if (peer && roomId) {
+          callHost();
+        }
+        await keepScreenAwake();
+      } catch (err) {
+        console.error('Error cámara:', err);
+        overlay.style.display = 'flex';
+        document.getElementById('overlay-title').textContent = 'Permiso Requerido';
+        document.getElementById('overlay-desc').textContent = 'Habilitá el acceso a la cámara en el navegador de tu celular para continuar.';
+      }
+    }
+
+    function initPeer() {
+      if (!roomId) {
+        overlay.style.display = 'flex';
+        document.getElementById('overlay-title').textContent = 'Falta código de sala';
+        document.getElementById('overlay-desc').textContent = 'Escaneá el código QR directamente desde EDITIVA en tu computadora.';
+        btnStart.style.display = 'none';
+        return;
+      }
+
+      badgeText.textContent = 'Buscando EDITIVA...';
+      dotEl.className = 'dot';
+
+      peer = new Peer();
+
+      peer.on('open', () => {
+        console.log('Peer abierto con ID:', peer.id);
+        if (currentStream) callHost();
+      });
+
+      peer.on('error', (err) => {
+        console.warn('Peer error:', err);
+        dotEl.className = 'dot err';
+        badgeText.textContent = 'Reintentando...';
+        setTimeout(() => { if (!peer.destroyed) callHost(); }, 3000);
+      });
+    }
+
+    function callHost() {
+      if (!peer || !roomId || !currentStream) return;
+      console.log('Llamando a EDITIVA:', roomId);
+      badgeText.textContent = 'Conectando con PC...';
+      dotEl.className = 'dot';
+
+      try {
+        activeCall = peer.call(roomId, currentStream);
+        if (activeCall) {
+          activeCall.on('close', () => {
+            dotEl.className = 'dot err';
+            badgeText.textContent = 'Desconectado';
+            setTimeout(callHost, 3000);
+          });
+          dotEl.className = 'dot live';
+          badgeText.textContent = 'En vivo en EDITIVA (1080p)';
+        }
+      } catch (err) {
+        console.error('Error al llamar:', err);
+        setTimeout(callHost, 3000);
+      }
+    }
+
+    btnFlip.addEventListener('click', () => {
+      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
+      startCamera(currentFacingMode);
+    });
+
+    let torchOn = false;
+    btnTorch.addEventListener('click', async () => {
+      const track = currentStream?.getVideoTracks()[0];
+      if (track) {
+        torchOn = !torchOn;
+        try {
+          await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+        } catch (e) {
+          console.warn('Torch error:', e);
+        }
+      }
+    });
+
+    btnStart.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      startCamera(currentFacingMode);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        keepScreenAwake();
+        if (!currentStream || !currentStream.active) startCamera(currentFacingMode);
+      }
+    });
+
+    startCamera(currentFacingMode).then(initPeer);
+  </script>
+</body>
+</html>
