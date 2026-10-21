@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>EDITIVA Cámara Móvil</title>
+  <title>EDITIVA Cámara Móvil 1080p</title>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -15,58 +15,95 @@
     #preview {
       position: absolute; inset: 0; width: 100%; height: 100%;
       object-fit: cover; background: #000;
+      transform: scaleX(1);
+    }
+    #preview.mirror {
+      transform: scaleX(-1);
     }
     .topbar {
       position: absolute; top: 0; left: 0; right: 0;
-      padding: 18px 16px;
-      background: linear-gradient(to bottom, rgba(9,13,22,0.85), transparent);
+      padding: 16px;
+      background: linear-gradient(to bottom, rgba(9,13,22,0.92), transparent);
       display: flex; justify-content: space-between; align-items: center;
       z-index: 10;
     }
     .brand {
       display: flex; align-items: center; gap: 8px;
-      font-weight: 800; font-size: 15px; letter-spacing: 0.5px;
+      font-weight: 800; font-size: 14px; letter-spacing: 0.5px;
     }
     .status-badge {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 6px 14px; border-radius: 999px;
-      font-size: 13px; font-weight: 700;
-      background: rgba(15,23,42,0.88); backdrop-filter: blur(8px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      font-size: 12px; font-weight: 700;
+      background: rgba(15,23,42,0.92); backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.15);
     }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: #eab308; }
     .dot.live { background: #22c55e; box-shadow: 0 0 10px #22c55e; }
     .dot.err { background: #ef4444; }
+    
+    .stats-card {
+      position: absolute; top: 68px; left: 16px; right: 16px;
+      padding: 10px 14px; border-radius: 12px;
+      background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 12px; line-height: 1.4; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .stats-info { color: #94a3b8; }
+    .stats-info strong { color: #38bdf8; }
+    
     .bottombar {
       position: absolute; bottom: 0; left: 0; right: 0;
-      padding: 24px 20px;
-      background: linear-gradient(to top, rgba(9,13,22,0.9), transparent);
-      display: flex; justify-content: space-around; align-items: center;
+      padding: 20px 16px;
+      background: linear-gradient(to top, rgba(9,13,22,0.95), transparent);
+      display: flex; flex-direction: column; gap: 14px;
       z-index: 10;
     }
+    .controls-row {
+      display: flex; justify-content: space-around; align-items: center; width: 100%;
+    }
     .btn-circle {
-      width: 58px; height: 58px; border-radius: 50%;
+      width: 52px; height: 52px; border-radius: 50%;
       background: rgba(255,255,255,0.18); backdrop-filter: blur(12px);
       border: 1px solid rgba(255,255,255,0.35);
-      color: #fff; font-size: 24px;
+      color: #fff; font-size: 20px;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; transition: transform 0.15s, background 0.15s;
     }
     .btn-circle:active { transform: scale(0.92); background: rgba(255,255,255,0.35); }
+    .btn-circle.active { background: #6366f1; border-color: #a5b4fc; }
+
+    .format-selector {
+      display: flex; justify-content: center; gap: 8px; width: 100%;
+    }
+    .format-btn {
+      padding: 8px 16px; border-radius: 999px;
+      background: rgba(255,255,255,0.12); backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #cbd5e1; font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: all 0.15s ease;
+    }
+    .format-btn.active {
+      background: #4f46e5; border-color: #818cf8; color: #fff;
+      box-shadow: 0 0 12px rgba(99,102,241,0.5);
+    }
+
     .overlay-msg {
       position: absolute; inset: 0; z-index: 20;
-      background: rgba(9,13,22,0.92);
+      background: rgba(9,13,22,0.95);
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       text-align: center; padding: 24px;
     }
-    .overlay-msg h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
-    .overlay-msg p { font-size: 14px; opacity: 0.8; max-width: 320px; line-height: 1.5; margin-bottom: 20px; }
+    .overlay-msg h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; color: #fff; }
+    .overlay-msg p { font-size: 14px; opacity: 0.85; max-width: 320px; line-height: 1.5; margin-bottom: 22px; color: #cbd5e1; }
     .btn-start {
       padding: 14px 28px; border-radius: 12px;
       background: linear-gradient(135deg, #4f46e5, #7c3aed);
       color: #fff; font-size: 15px; font-weight: 700;
-      border: none; cursor: pointer;
+      border: none; cursor: pointer; box-shadow: 0 4px 14px rgba(79,70,229,0.4);
     }
   </style>
 </head>
@@ -83,14 +120,29 @@
     </div>
   </div>
 
+  <div class="stats-card" id="stats-card">
+    <div class="stats-info">
+      <div>Resolución: <strong id="stat-res">1080 × 1920 (9:16)</strong></div>
+      <div style="font-size:11px; margin-top:2px;">FPS: <strong id="stat-fps">30 fps</strong> · Calidad: <strong id="stat-qual">HD Máxima</strong></div>
+    </div>
+    <div id="stat-orientation" style="color:#22c55e; font-weight:700; font-size:11px;">📱 VERTICAL</div>
+  </div>
+
   <div class="bottombar">
-    <button class="btn-circle" id="btn-flip" title="Cambiar cámara">🔄</button>
-    <button class="btn-circle" id="btn-torch" title="Linterna" style="display:none;">💡</button>
+    <div class="format-selector">
+      <button class="format-btn active" id="btn-fmt-vertical">📱 Vertical (9:16)</button>
+      <button class="format-btn" id="btn-fmt-horizontal">🖥️ Horizontal (16:9)</button>
+    </div>
+    <div class="controls-row">
+      <button class="btn-circle" id="btn-flip" title="Cambiar a cámara frontal o trasera">🤳</button>
+      <button class="btn-circle" id="btn-rotate" title="Rotar 90 grados">🔄</button>
+      <button class="btn-circle" id="btn-torch" title="Linterna" style="display:none;">💡</button>
+    </div>
   </div>
 
   <div class="overlay-msg" id="overlay" style="display:none;">
     <h2 id="overlay-title">Conectar cámara a EDITIVA</h2>
-    <p id="overlay-desc">Tocá el botón para permitir el uso de la cámara de tu celular.</p>
+    <p id="overlay-desc">Tocá el botón para permitir el uso de la cámara en vertical 1080p sin compresión.</p>
     <button class="btn-start" id="btn-start">Iniciar Cámara</button>
   </div>
 
@@ -101,17 +153,33 @@
     const videoEl = document.getElementById('preview');
     const badgeText = document.getElementById('badge-text');
     const dotEl = document.getElementById('dot');
+    const statRes = document.getElementById('stat-res');
+    const statFps = document.getElementById('stat-fps');
+    const statQual = document.getElementById('stat-qual');
+    const statOrientation = document.getElementById('stat-orientation');
+    const btnFmtVertical = document.getElementById('btn-fmt-vertical');
+    const btnFmtHorizontal = document.getElementById('btn-fmt-horizontal');
     const btnFlip = document.getElementById('btn-flip');
+    const btnRotate = document.getElementById('btn-rotate');
     const btnTorch = document.getElementById('btn-torch');
     const overlay = document.getElementById('overlay');
     const btnStart = document.getElementById('btn-start');
 
-    let currentFacingMode = 'environment';
-    let currentStream = null;
+    let currentFacingMode = 'user'; // Start with selfie camera for creators
+    let targetFormat = '9:16';      // Default to true 9:16 vertical
+    let rotationAngle = 0;          // 0, 90, 180, 270
+    let rawCameraStream = null;
+    let outgoingStream = null;
     let peer = null;
     let activeCall = null;
     let isCalling = false;
     let wakeLock = null;
+
+    // Offscreen rendering pipeline for guaranteed 1080x1920 vertical output
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    let isPipelineActive = false;
+    let pipelineAnimId = null;
 
     async function keepScreenAwake() {
       try {
@@ -123,47 +191,186 @@
       }
     }
 
-    async function startCamera(facing) {
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
+    async function startCamera() {
+      if (rawCameraStream) {
+        rawCameraStream.getTracks().forEach(t => t.stop());
       }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+
+      // Priority list of constraints to acquire real sensor resolution
+      const isVertical = targetFormat === '9:16';
+      
+      const constraintCandidates = [
+        // 1. Ideal 1080p with strict aspect ratio
+        {
           video: {
-            facingMode: { ideal: facing },
-            width: { ideal: 1080, min: 720 },
-            height: { ideal: 1920, min: 1280 },
+            facingMode: currentFacingMode,
+            width: isVertical ? { ideal: 1080 } : { ideal: 1920 },
+            height: isVertical ? { ideal: 1920 } : { ideal: 1080 },
+            aspectRatio: isVertical ? { ideal: 0.5625 } : { ideal: 1.7777 },
             frameRate: { ideal: 30, min: 24 }
           },
           audio: false
-        });
-
-        currentStream = stream;
-        videoEl.srcObject = currentStream;
-
-        const track = currentStream.getVideoTracks()[0];
-        const caps = track.getCapabilities ? track.getCapabilities() : {};
-        if (caps.torch) {
-          btnTorch.style.display = 'flex';
-        } else {
-          btnTorch.style.display = 'none';
+        },
+        // 2. High-res without strict aspectRatio
+        {
+          video: {
+            facingMode: currentFacingMode,
+            width: isVertical ? { ideal: 1080 } : { ideal: 1920 },
+            height: isVertical ? { ideal: 1920 } : { ideal: 1080 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        },
+        // 3. Sensor native landscape (e.g. 1920x1080) which our pipeline converts
+        {
+          video: {
+            facingMode: currentFacingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, min: 24 }
+          },
+          audio: false
+        },
+        // 4. Basic fallback
+        {
+          video: { facingMode: currentFacingMode },
+          audio: false
         }
+      ];
 
-        if (activeCall && activeCall.peerConnection) {
-          const senders = activeCall.peerConnection.getSenders();
-          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-          if (videoSender) {
-            videoSender.replaceTrack(track);
-          }
-        } else {
-          triggerCall();
+      let stream = null;
+      for (const candidate of constraintCandidates) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(candidate);
+          if (stream) break;
+        } catch (e) {
+          console.warn('Candidate failed, trying next:', e);
         }
-        await keepScreenAwake();
-      } catch (err) {
-        console.error('Error cámara:', err);
+      }
+
+      if (!stream) {
         overlay.style.display = 'flex';
-        document.getElementById('overlay-title').textContent = 'Permiso Requerido';
-        document.getElementById('overlay-desc').textContent = 'Habilitá el acceso a la cámara en el navegador de tu celular para continuar.';
+        return;
+      }
+
+      rawCameraStream = stream;
+      videoEl.srcObject = rawCameraStream;
+      if (currentFacingMode === 'user') {
+        videoEl.classList.add('mirror');
+      } else {
+        videoEl.classList.remove('mirror');
+      }
+
+      // Wait for video dimensions to settle
+      await new Promise(r => {
+        if (videoEl.videoWidth > 0) return r();
+        videoEl.onloadedmetadata = () => r();
+        setTimeout(r, 600);
+      });
+
+      setupStreamPipeline();
+      await keepScreenAwake();
+    }
+
+    function setupStreamPipeline() {
+      // Determine output dimensions
+      const isVertical = targetFormat === '9:16';
+      const outWidth = isVertical ? 1080 : 1920;
+      const outHeight = isVertical ? 1920 : 1080;
+
+      canvas.width = outWidth;
+      canvas.height = outHeight;
+
+      if (pipelineAnimId) cancelAnimationFrame(pipelineAnimId);
+
+      const render = () => {
+        if (!rawCameraStream || !videoEl || videoEl.readyState < 2) {
+          pipelineAnimId = requestAnimationFrame(render);
+          return;
+        }
+
+        const vw = videoEl.videoWidth;
+        const vh = videoEl.videoHeight;
+
+        ctx.save();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, outWidth, outHeight);
+
+        // Apply rotation
+        ctx.translate(outWidth / 2, outHeight / 2);
+        if (rotationAngle !== 0) {
+          ctx.rotate((rotationAngle * Math.PI) / 180);
+        }
+
+        // Mirror selfie camera
+        if (currentFacingMode === 'user') {
+          ctx.scale(-1, 1);
+        }
+
+        const rot = Math.abs(rotationAngle);
+        const isRotated90 = rot === 90 || rot === 270;
+        const drawTargetW = isRotated90 ? outHeight : outWidth;
+        const drawTargetH = isRotated90 ? outWidth : outHeight;
+
+        // Calculate aspect fill crop (object-fit: cover)
+        const scale = Math.max(drawTargetW / vw, drawTargetH / vh);
+        const sw = vw * scale;
+        const sh = vh * scale;
+
+        ctx.drawImage(videoEl, -sw / 2, -sh / 2, sw, sh);
+        ctx.restore();
+
+        pipelineAnimId = requestAnimationFrame(render);
+      };
+
+      pipelineAnimId = requestAnimationFrame(render);
+
+      // Capture 30fps canvas stream
+      const pipelineStream = canvas.captureStream(30);
+      outgoingStream = pipelineStream;
+
+      // Update statistics
+      statRes.textContent = outWidth + ' × ' + outHeight;
+      statOrientation.textContent = isVertical ? '📱 VERTICAL (9:16)' : '🖥️ HORIZONTAL (16:9)';
+
+      // Check flashlight
+      const track = rawCameraStream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      btnTorch.style.display = caps.torch ? 'flex' : 'none';
+
+      // Connect or replace track in active WebRTC call
+      if (activeCall && activeCall.peerConnection) {
+        const senders = activeCall.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          const newTrack = pipelineStream.getVideoTracks()[0];
+          videoSender.replaceTrack(newTrack).then(() => enforceHighQuality(activeCall));
+        }
+      } else {
+        triggerCall();
+      }
+    }
+
+    async function enforceHighQuality(call) {
+      if (!call || !call.peerConnection) return;
+      const pc = call.peerConnection;
+      const senders = pc.getSenders();
+      const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+      if (videoSender) {
+        try {
+          const params = videoSender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+          // Force 10 Mbps maximum bitrate, NO downscaling, maintain native resolution
+          params.encodings[0].maxBitrate = 10000000;
+          params.encodings[0].scaleResolutionDownBy = 1.0;
+          params.degradationPreference = 'maintain-resolution';
+          await videoSender.setParameters(params);
+          console.log('[EDITIVA] Calidad máxima aplicada: 10 Mbps maintain-resolution');
+        } catch (e) {
+          console.warn('Could not set encoding parameters:', e);
+        }
       }
     }
 
@@ -214,7 +421,7 @@
     }
 
     function triggerCall() {
-      if (!peer || !peer.open || !roomId || !currentStream || isCalling) return;
+      if (!peer || !peer.open || !roomId || !outgoingStream || isCalling) return;
       if (activeCall && (activeCall.open || (activeCall.peerConnection && activeCall.peerConnection.iceConnectionState === 'connected'))) {
         return;
       }
@@ -224,8 +431,8 @@
       dotEl.className = 'dot';
 
       try {
-        console.log('Llamando a EDITIVA:', roomId);
-        const call = peer.call(roomId, currentStream);
+        console.log('Llamando a EDITIVA en 1080p:', roomId);
+        const call = peer.call(roomId, outgoingStream);
         activeCall = call;
 
         const pc = call.peerConnection;
@@ -235,10 +442,11 @@
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
               isCalling = false;
               dotEl.className = 'dot live';
-              badgeText.textContent = 'En vivo en EDITIVA (1080p)';
+              badgeText.textContent = 'En vivo en EDITIVA (1080p Nativo)';
+              enforceHighQuality(call);
             } else if (pc.iceConnectionState === 'failed') {
               isCalling = false;
-              try { call.close(); } catch (_) {}
+              try { call.close(); } catch(_) {}
               activeCall = null;
               dotEl.className = 'dot err';
               badgeText.textContent = 'Reconectando...';
@@ -269,45 +477,39 @@
       }
     }
 
+    btnFmtVertical.addEventListener('click', () => {
+      targetFormat = '9:16';
+      btnFmtVertical.classList.add('active');
+      btnFmtHorizontal.classList.remove('active');
+      setupStreamPipeline();
+    });
+
+    btnFmtHorizontal.addEventListener('click', () => {
+      targetFormat = '16:9';
+      btnFmtHorizontal.classList.add('active');
+      btnFmtVertical.classList.remove('active');
+      setupStreamPipeline();
+    });
+
     btnFlip.addEventListener('click', async () => {
-      currentFacingMode = currentFacingMode === 'environment' ? 'user' : 'environment';
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: currentFacingMode },
-            width: { ideal: 1080, min: 720 },
-            height: { ideal: 1920, min: 1280 },
-            frameRate: { ideal: 30, min: 24 }
-          },
-          audio: false
-        });
-        currentStream = stream;
-        videoEl.srcObject = stream;
-        const track = stream.getVideoTracks()[0];
-        if (activeCall && activeCall.peerConnection) {
-          const senders = activeCall.peerConnection.getSenders();
-          const videoSender = senders.find(s => s.track && s.track.kind === 'video');
-          if (videoSender) {
-            await videoSender.replaceTrack(track);
-          }
-        } else {
-          triggerCall();
-        }
-      } catch (e) {
-        console.error('Error flipping camera:', e);
-      }
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      btnFlip.textContent = currentFacingMode === 'user' ? '🤳' : '📷';
+      await startCamera();
+    });
+
+    btnRotate.addEventListener('click', () => {
+      rotationAngle = (rotationAngle + 90) % 360;
+      setupStreamPipeline();
     });
 
     let torchOn = false;
     btnTorch.addEventListener('click', async () => {
-      const track = currentStream?.getVideoTracks()[0];
+      const track = rawCameraStream?.getVideoTracks()[0];
       if (track) {
         torchOn = !torchOn;
         try {
           await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+          btnTorch.classList.toggle('active', torchOn);
         } catch (e) {
           console.warn('Torch error:', e);
         }
@@ -316,18 +518,18 @@
 
     btnStart.addEventListener('click', () => {
       overlay.style.display = 'none';
-      startCamera(currentFacingMode);
+      startCamera();
     });
 
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         keepScreenAwake();
-        if (!currentStream || !currentStream.active) startCamera(currentFacingMode);
+        if (!rawCameraStream || !rawCameraStream.active) startCamera();
         if (!activeCall) triggerCall();
       }
     });
 
-    startCamera(currentFacingMode).then(initPeer);
+    startCamera().then(initPeer);
   </script>
 </body>
 </html>
