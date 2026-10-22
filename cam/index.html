@@ -126,11 +126,37 @@
     let peer = null;
     let activeCall = null;
     let isCalling = false;
+    let retryTimer = null;
+    let callTimeout = null;
+    let wakeLock = null;
+    let requestingWakeLock = false;
 
-    function keepAwake() {
+    function scheduleCall() {
+      if (retryTimer !== null) return;
+      retryTimer = setTimeout(() => { retryTimer = null; triggerCall(); }, 2000);
+    }
+
+    function releaseCall(call) {
+      if (activeCall !== call) return;
+      activeCall = null;
+      isCalling = false;
+      clearTimeout(callTimeout);
+      callTimeout = null;
+      try { call.close(); } catch {}
+      dotEl.className = 'dot err';
+      badgeText.textContent = 'Esperando a EDITIVA. Se reconectará al abrirla…';
+      scheduleCall();
+    }
+
+    async function keepAwake() {
+      if (document.hidden || requestingWakeLock || (wakeLock && !wakeLock.released)) return;
+      if (!('wakeLock' in navigator)) return;
+      requestingWakeLock = true;
       try {
-        if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
-      } catch {}
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } catch { /* Browser may deny screen wake lock; never claim it is held. */ }
+      finally { requestingWakeLock = false; }
     }
 
     async function getCameraStream(facing) {
@@ -194,7 +220,7 @@
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
           params.encodings[0].maxBitrate = 12000000;      // 12 Mbps for crystal clarity
           params.encodings[0].maxFramerate = 60;          // Allow full 60 FPS
-          params.encodings[0].degradationPreference = 'maintain-framerate';
+          params.degradationPreference = 'maintain-resolution';
           await videoSender.setParameters(params);
           console.log('[EDITIVA] Encodings configurados: 60 FPS max, 12 Mbps');
         }
@@ -236,8 +262,13 @@
         const newTrack = stream.getVideoTracks()[0];
         const sender = activeCall.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
         if (sender && newTrack) {
-          await sender.replaceTrack(newTrack).catch(console.error);
-          apply60FpsEncodings(activeCall);
+          try {
+            await sender.replaceTrack(newTrack);
+            await apply60FpsEncodings(activeCall);
+          } catch (error) {
+            console.warn(error);
+            if (activeCall) releaseCall(activeCall);
+          }
         }
       } else {
         triggerCall();
@@ -247,6 +278,10 @@
     }
 
     function initPeer() {
+      if (peer && !peer.destroyed) {
+        if (peer.disconnected) { try { peer.reconnect(); } catch {} }
+        return;
+      }
       if (!roomId) {
         badgeText.textContent = 'Falta código QR';
         dotEl.className = 'dot err';
@@ -267,100 +302,76 @@
         }
       });
 
+      const owner = peer;
       peer.on('open', () => {
+        if (peer !== owner) return;
         console.log('Peer en línea:', peer.id);
         triggerCall();
       });
 
       peer.on('disconnected', () => {
-        if (!peer.destroyed) peer.reconnect();
+        if (peer === owner && !peer.destroyed) { try { peer.reconnect(); } catch {} }
       });
 
       peer.on('error', (err) => {
+        if (peer !== owner) return;
         console.warn('Peer error:', err);
-        dotEl.className = 'dot err';
-        badgeText.textContent = 'Buscando a EDITIVA en PC...';
-        isCalling = false;
-        activeCall = null;
-        setTimeout(triggerCall, 2000);
+        // Signaling errors must not tear down a healthy media connection.
+        if (activeCall?.peerConnection?.connectionState === 'connected') return;
+        if (activeCall) releaseCall(activeCall);
+        else { isCalling = false; scheduleCall(); }
       });
     }
 
     function triggerCall() {
-      if (!peer || !peer.open || !roomId || !currentStream || isCalling) return;
-      if (activeCall && (activeCall.open || (activeCall.peerConnection && activeCall.peerConnection.iceConnectionState === 'connected'))) {
-        return;
-      }
-
+      if (!currentStream?.getVideoTracks().some(track => track.readyState === 'live')) return;
+      if (!peer || peer.destroyed) { initPeer(); return; }
+      if (peer.disconnected) { try { peer.reconnect(); } catch {} return; }
+      if (!peer.open || !roomId || isCalling || activeCall) return;
+      clearTimeout(retryTimer);
+      retryTimer = null;
       isCalling = true;
-      badgeText.textContent = 'Llamando a EDITIVA...';
+      badgeText.textContent = 'Conectando con EDITIVA…';
       dotEl.className = 'dot';
-
       try {
         const call = peer.call(roomId, currentStream);
+        if (!call) throw new Error('No se pudo iniciar la conexión.');
         activeCall = call;
-
+        callTimeout = setTimeout(() => releaseCall(call), 12000);
         const pc = call.peerConnection;
-        if (pc) {
-          const onConnected = () => {
-            if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-              dotEl.className = 'dot live';
-              badgeText.textContent = 'En vivo en EDITIVA (60 FPS)';
-              isCalling = false;
-              apply60FpsEncodings(call);
-            }
-          };
-
-          pc.addEventListener('connectionstatechange', () => {
-            console.log('WebRTC state:', pc.connectionState);
-            onConnected();
-            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
-              dotEl.className = 'dot err';
-              badgeText.textContent = 'Reconectando con PC...';
-              isCalling = false;
-              activeCall = null;
-              setTimeout(triggerCall, 2000);
-            }
-          });
-
-          pc.addEventListener('iceconnectionstatechange', () => {
-            console.log('ICE state:', pc.iceConnectionState);
-            onConnected();
-            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
-              dotEl.className = 'dot err';
-              badgeText.textContent = 'Reconectando con PC...';
-              isCalling = false;
-              activeCall = null;
-              setTimeout(triggerCall, 2000);
-            }
-          });
-
-          setTimeout(() => apply60FpsEncodings(call), 1000);
-          setTimeout(() => apply60FpsEncodings(call), 3000);
-        }
-
-        call.on('close', () => {
-          console.log('Call closed');
-          dotEl.className = 'dot err';
-          badgeText.textContent = 'Llamada cerrada, reintentando...';
-          isCalling = false;
-          activeCall = null;
-          setTimeout(triggerCall, 2000);
-        });
-
-        call.on('error', (err) => {
-          console.warn('Call error:', err);
-          dotEl.className = 'dot err';
-          badgeText.textContent = 'Reintentando llamada...';
-          isCalling = false;
-          activeCall = null;
-          setTimeout(triggerCall, 2000);
-        });
+        const updateState = () => {
+          if (activeCall !== call) return;
+          if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            clearTimeout(callTimeout);
+            callTimeout = null;
+            isCalling = false;
+            dotEl.className = 'dot live';
+            badgeText.textContent = 'En vivo en EDITIVA';
+            void apply60FpsEncodings(call);
+          } else if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)
+            || ['failed', 'closed', 'disconnected'].includes(pc.iceConnectionState)) {
+            releaseCall(call);
+          }
+        };
+        pc?.addEventListener('connectionstatechange', updateState);
+        pc?.addEventListener('iceconnectionstatechange', updateState);
+        call.on('close', () => releaseCall(call));
+        call.on('error', () => releaseCall(call));
       } catch (err) {
         isCalling = false;
-        setTimeout(triggerCall, 2500);
+        scheduleCall();
       }
     }
+
+    // Recheck after network recovery or a suspended mobile tab. Never queue
+    // multiple calls and never let an old call close the current connection.
+    window.addEventListener('online', () => { initPeer(); triggerCall(); });
+    setInterval(() => {
+      if (!document.hidden && currentStream && !activeCall) {
+        initPeer();
+        triggerCall();
+      }
+    }, 5000);
 
     btnSwitchCam.addEventListener('click', async () => {
       btnSwitchCam.style.opacity = '0.5';
@@ -380,7 +391,8 @@
       if (!document.hidden) {
         keepAwake();
         if (currentStream && !currentStream.active) activateCamera(currentFacing);
-        if (!activeCall || !activeCall.open) triggerCall();
+        initPeer();
+        if (!activeCall) triggerCall();
       }
     });
 
