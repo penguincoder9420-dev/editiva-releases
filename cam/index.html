@@ -302,14 +302,19 @@
 
         const pc = call.peerConnection;
         if (pc) {
-          pc.addEventListener('connectionstatechange', () => {
-            console.log('WebRTC state:', pc.connectionState);
-            if (pc.connectionState === 'connected') {
+          const onConnected = () => {
+            if (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
               dotEl.className = 'dot live';
               badgeText.textContent = 'En vivo en EDITIVA (60 FPS)';
               isCalling = false;
               apply60FpsEncodings(call);
-            } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            }
+          };
+
+          pc.addEventListener('connectionstatechange', () => {
+            console.log('WebRTC state:', pc.connectionState);
+            onConnected();
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
               dotEl.className = 'dot err';
               badgeText.textContent = 'Reconectando...';
               isCalling = false;
@@ -317,6 +322,14 @@
               setTimeout(triggerCall, 2000);
             }
           });
+
+          pc.addEventListener('iceconnectionstatechange', () => {
+            console.log('ICE state:', pc.iceConnectionState);
+            onConnected();
+          });
+
+          setTimeout(() => apply60FpsEncodings(call), 1000);
+          setTimeout(() => apply60FpsEncodings(call), 3000);
         }
 
         call.on('close', () => {
