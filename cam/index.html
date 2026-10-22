@@ -278,11 +278,11 @@
 
       peer.on('error', (err) => {
         console.warn('Peer error:', err);
-        if (!activeCall) {
-          dotEl.className = 'dot err';
-          badgeText.textContent = 'Reintentando...';
-          setTimeout(triggerCall, 2000);
-        }
+        dotEl.className = 'dot err';
+        badgeText.textContent = 'Buscando a EDITIVA en PC...';
+        isCalling = false;
+        activeCall = null;
+        setTimeout(triggerCall, 2000);
       });
     }
 
@@ -314,9 +314,9 @@
           pc.addEventListener('connectionstatechange', () => {
             console.log('WebRTC state:', pc.connectionState);
             onConnected();
-            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
               dotEl.className = 'dot err';
-              badgeText.textContent = 'Reconectando...';
+              badgeText.textContent = 'Reconectando con PC...';
               isCalling = false;
               activeCall = null;
               setTimeout(triggerCall, 2000);
@@ -326,6 +326,13 @@
           pc.addEventListener('iceconnectionstatechange', () => {
             console.log('ICE state:', pc.iceConnectionState);
             onConnected();
+            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed') {
+              dotEl.className = 'dot err';
+              badgeText.textContent = 'Reconectando con PC...';
+              isCalling = false;
+              activeCall = null;
+              setTimeout(triggerCall, 2000);
+            }
           });
 
           setTimeout(() => apply60FpsEncodings(call), 1000);
@@ -333,12 +340,18 @@
         }
 
         call.on('close', () => {
+          console.log('Call closed');
+          dotEl.className = 'dot err';
+          badgeText.textContent = 'Llamada cerrada, reintentando...';
           isCalling = false;
           activeCall = null;
           setTimeout(triggerCall, 2000);
         });
 
-        call.on('error', () => {
+        call.on('error', (err) => {
+          console.warn('Call error:', err);
+          dotEl.className = 'dot err';
+          badgeText.textContent = 'Reintentando llamada...';
           isCalling = false;
           activeCall = null;
           setTimeout(triggerCall, 2000);
